@@ -7,6 +7,7 @@ import {IuploadfileList,IdownloadfileList} from "./ICommon";
 import {ILuckyFile,ILuckyJson} from './ToLuckySheet/ILuck'
 import { ZipFile } from "./ZipFile";
 import { ExcelFile } from "./toExcel/ExcelFile";
+import { fstat } from "fs";
 
 // //demo
 // function demoHandler(){

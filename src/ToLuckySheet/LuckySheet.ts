@@ -1,11 +1,12 @@
-﻿import { IluckyImageBorder,IluckyImageCrop,IluckyImageDefault,IluckyImages,IluckySheetCelldata,IluckySheetCelldataValue,IMapluckySheetborderInfoCellForImp,IluckySheetborderInfoCellValue,IluckySheetborderInfoCellValueStyle,IFormulaSI,IluckySheetRowAndColumnLen,IluckySheetRowAndColumnHidden,IluckySheetSelection,IcellOtherInfo,IformulaList,IformulaListItem} from "./ILuck";
+﻿import { IluckyImageBorder,IluckyImageCrop,IluckyImageDefault,IluckyImages,IluckySheetCelldata,IluckySheetCelldataValue,IMapluckySheetborderInfoCellForImp,IluckySheetborderInfoCellValue,IluckySheetborderInfoCellValueStyle,IFormulaSI,IluckySheetRowAndColumnLen,IluckySheetRowAndColumnHidden,IluckySheetSelection,IcellOtherInfo,IformulaList,IformulaListItem, IluckysheetHyperlink, IluckysheetHyperlinkType, IluckysheetDataVerification} from "./ILuck";
 import {LuckySheetCelldata} from "./LuckyCell";
 import { IattributeList } from "../ICommon";
-import {getXmlAttibute, getColumnWidthPixel, fromulaRef,getRowHeightPixel,getcellrange,generateRandomIndex,getPxByEMUs} from "../common/method";
-import {borderTypes} from "../common/constant";
+import {getXmlAttibute, getColumnWidthPixel, fromulaRef,getRowHeightPixel,getcellrange,generateRandomIndex,getPxByEMUs, getMultiSequenceToNum, getTransR1C1ToSequence, getPeelOffX14, getMultiFormulaValue} from "../common/method";
+import {borderTypes, COMMON_TYPE2, DATA_VERIFICATION_MAP, DATA_VERIFICATION_TYPE2_MAP, worksheetFilePath} from "../common/constant";
 import { ReadXml, IStyleCollections, Element,getColor } from "./ReadXml";
 import { LuckyFileBase,LuckySheetBase,LuckyConfig,LuckySheetborderInfoCellForImp,LuckySheetborderInfoCellValue,LuckysheetCalcChain,LuckySheetConfigMerge } from "./LuckyBase";
 import {ImageList} from "./LuckyImage";
+import dayjs from "dayjs";
 
 export class LuckySheet extends LuckySheetBase {
 
@@ -33,7 +34,8 @@ export class LuckySheet extends LuckySheetBase {
         this.sharedStrings = allFileOption.sharedStrings;
         this.calcChainEles = allFileOption.calcChain;
         this.sheetList = allFileOption.sheetList;
-        this.imageList = allFileOption.imageList;  
+        this.imageList = allFileOption.imageList;
+        this.hide = allFileOption.hide;
 
         //Output
         this.name = sheetName;
@@ -165,6 +167,15 @@ export class LuckySheet extends LuckySheetBase {
                 this.calcChain.push(chain);
             }
         }
+      
+        // dataVerification config
+        this.dataVerification = this.generateConfigDataValidations();
+
+        // hyperlink config
+        this.hyperlink = this.generateConfigHyperlinks();
+      
+        // sheet hide
+        this.hide = this.hide;
 
         if(this.mergeCells!=null){
             for(let i=0;i<this.mergeCells.length;i++){
@@ -372,7 +383,7 @@ export class LuckySheet extends LuckySheetBase {
     /**
     * @desc This will convert cols/col to luckysheet config of column'width
     */
-   private generateConfigRowLenAndHiddenAddCell():IcellOtherInfo{
+    private generateConfigRowLenAndHiddenAddCell():IcellOtherInfo{
         let rows = this.readXml.getElementsByTagName("sheetData/row", this.sheetFile);
         let cellOtherInfo:IcellOtherInfo = {};
         let formulaList:IformulaList = {};
@@ -534,6 +545,176 @@ export class LuckySheet extends LuckySheetBase {
         }
 
         return cellOtherInfo;
+    }
+  
+    /**
+     * luckysheet config of dataValidations
+     * 
+     * @returns {IluckysheetDataVerification} - dataValidations config
+     */
+    private generateConfigDataValidations(): IluckysheetDataVerification {
+      
+      let rows = this.readXml.getElementsByTagName(
+        "dataValidations/dataValidation",
+        this.sheetFile
+      );
+      let extLst =
+        this.readXml.getElementsByTagName(
+          "extLst/ext/x14:dataValidations/x14:dataValidation",
+          this.sheetFile
+        ) || [];
+      
+      rows = rows.concat(extLst);
+  
+      let dataVerification: IluckysheetDataVerification = {};
+  
+      for (let i = 0; i < rows.length; i++) {
+        let row = rows[i];
+        let attrList = row.attributeList;
+        let formulaValue = row.value;
+  
+        let type = getXmlAttibute(attrList, "type", null);
+        let operator = "",
+            sqref = "",
+            sqrefIndexArr: string[] = [],
+            valueArr: string[] = [];
+        let _prohibitInput =
+          getXmlAttibute(attrList, "allowBlank", null) !== "1" ? false : true;
+        
+        // x14 processing
+        const formulaReg = new RegExp(/<x14:formula1>|<xm:sqref>/g)
+        if (formulaReg.test(formulaValue) && extLst?.length >= 0) {
+          operator = getXmlAttibute(attrList, "operator", null);
+          const peelOffData = getPeelOffX14(formulaValue);
+          sqref = peelOffData?.sqref;
+          sqrefIndexArr = getMultiSequenceToNum(sqref);
+          valueArr = getMultiFormulaValue(peelOffData?.formula);
+        } else {
+          operator = getXmlAttibute(attrList, "operator", null);
+          sqref = getXmlAttibute(attrList, "sqref", null);
+          sqrefIndexArr = getMultiSequenceToNum(sqref);
+          valueArr = getMultiFormulaValue(formulaValue);
+        }
+
+        let _type = DATA_VERIFICATION_MAP[type];
+        let _type2 = null;
+        let _value1: string | number = valueArr?.length >= 1 ? valueArr[0] : "";
+        let _value2: string | number = valueArr?.length === 2 ? valueArr[1] : "";
+        let _hint = getXmlAttibute(attrList, "prompt", null);
+        let _hintShow = _hint ? true : false
+  
+        const matchType = COMMON_TYPE2.includes(_type) ? "common" : _type;
+        _type2 = operator
+          ? DATA_VERIFICATION_TYPE2_MAP[matchType][operator]
+          : "bw";
+        
+        // mobile phone number processing
+        if (
+          _type === "text_content" &&
+          (_value1?.includes("LEN") || _value1?.includes("len")) &&
+          _value1?.includes("=11")
+        ) {
+          _type = "validity";
+          _type2 = "phone";
+        }
+
+        // date processing
+        if (_type === "date") {
+          const D1900 = new Date(1899, 11, 30, 0, 0, 0);
+          _value1 = dayjs(D1900)
+            .clone()
+            .add(Number(_value1), "day")
+            .format("YYYY-MM-DD");
+          _value2 = dayjs(D1900)
+            .clone()
+            .add(Number(_value2), "day")
+            .format("YYYY-MM-DD");
+        }
+        
+        // checkbox and dropdown processing
+        if (_type === "checkbox" || _type === "dropdown") {
+          _type2 = null;
+        }
+        
+        // dynamically add dataVerifications
+        for (const ref of sqrefIndexArr) {
+          dataVerification[ref] = {
+            type: _type,
+            type2: _type2,
+            value1: _value1,
+            value2: _value2,
+            checked: false,
+            remote: false,
+            prohibitInput: _prohibitInput,
+            hintShow: _hintShow,
+            hintText: _hint
+          };
+        }
+      }
+  
+      return dataVerification;
+    }
+  
+    /**
+     * luckysheet config of hyperlink
+     * 
+     * @returns {IluckysheetHyperlink} - hyperlink config
+     */
+    private generateConfigHyperlinks(): IluckysheetHyperlink {
+      let rows = this.readXml.getElementsByTagName(
+        "hyperlinks/hyperlink",
+        this.sheetFile
+      );
+      let hyperlink: IluckysheetHyperlink = {};
+      for (let i = 0; i < rows.length; i++) {
+        let row = rows[i];
+        let attrList = row.attributeList;
+        let ref = getXmlAttibute(attrList, "ref", null),
+            refArr = getMultiSequenceToNum(ref),
+            _display = getXmlAttibute(attrList, "display", null),
+            _address = getXmlAttibute(attrList, "location", null),
+            _tooltip = getXmlAttibute(attrList, "tooltip", null);
+        let _type: IluckysheetHyperlinkType = _address ? "internal" : "external";
+  
+        // external hyperlink
+        if (!_address) {
+          let rid = attrList["r:id"];
+          let sheetFile = this.sheetFile;
+          let relationshipList = this.readXml.getElementsByTagName(
+            "Relationships/Relationship",
+            `xl/worksheets/_rels/${sheetFile.replace(worksheetFilePath, "")}.rels`
+          );
+  
+          const findRid = relationshipList?.find(
+            (e) => e.attributeList["Id"] === rid
+          );
+
+          if (findRid) {
+            _address = findRid.attributeList["Target"];
+            _type = findRid.attributeList[
+              "TargetMode"
+            ]?.toLocaleLowerCase() as IluckysheetHyperlinkType;
+          }
+        }
+
+        // match R1C1
+        const addressReg = new RegExp(/^.*!R([\d$])+C([\d$])*$/g)
+        if (addressReg.test(_address)) {
+          _address = getTransR1C1ToSequence(_address);
+        }
+        
+        // dynamically add hyperlinks
+        for (const ref of refArr) {
+          hyperlink[ref] = {
+            linkAddress: _address,
+            linkTooltip: _tooltip || "",
+            linkType: _type,
+            display: _display || "",
+          };
+        }
+      }
+      
+      return hyperlink;
     }
 
     // private getBorderInfo(borders:Element[]):LuckySheetborderInfoCellValueStyle{

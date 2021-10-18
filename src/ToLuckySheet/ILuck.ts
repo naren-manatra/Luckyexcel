@@ -52,7 +52,10 @@ export interface IluckySheet{
     defaultRowHeight:number, //row height pixel
 
     images:IluckyImages,//image list
-
+    
+    dataVerification: IluckysheetDataVerification;
+		hyperlink: IluckysheetHyperlink, // hyperlinks
+		hide: number; // sheet hide
 }
 
 //luckysheet general selection
@@ -346,3 +349,45 @@ export interface IformulaListItem{
     r:number,
     c:number
 }
+
+
+// DataVerification
+export interface IluckysheetDataVerification {
+  [key: string]: IluckysheetDataVerificationValue;
+}
+
+export interface IluckysheetDataVerificationValue {
+  type: IluckysheetDataVerificationType;
+  type2: string | null;
+  value1: string | number | null;
+  value2: string | number | null;
+  checked: boolean;
+  remote: boolean;
+  prohibitInput: boolean;
+  hintShow: boolean;
+  hintText: string;
+}
+
+export type IluckysheetDataVerificationType =
+  | "dropdown"
+  | "checkbox"
+  | "number"
+  | "number_integer"
+  | "number_decimal"
+  | "text_content"
+  | "text_length"
+  | "date"
+  | "validity";
+
+export interface IluckysheetHyperlink {
+    [key: string]: IluckysheetHyperlinkValue;
+}
+
+export interface IluckysheetHyperlinkValue {
+    linkAddress: string;
+    linkTooltip: string;
+    linkType: IluckysheetHyperlinkType;
+    display: string;
+}
+
+export type IluckysheetHyperlinkType = "internal" | "external";

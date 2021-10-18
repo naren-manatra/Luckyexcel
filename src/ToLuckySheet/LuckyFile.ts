@@ -1,7 +1,7 @@
 ﻿import { ILuckyFile,IluckySheetRowAndColumnHidden,IluckySheetRowAndColumnLen} from "./ILuck";
 import { LuckySheet} from "./LuckySheet";
 import {IuploadfileList, IattributeList} from "../ICommon";
-import {workBookFile, coreFile, appFile, stylesFile, sharedStringsFile,numFmtDefault,theme1File,calcChainFile,workbookRels} from "../common/constant";
+import {workBookFile, coreFile, appFile, stylesFile, sharedStringsFile,numFmtDefault,theme1File,calcChainFile,workbookRels, numFmtDefaultMap} from "../common/constant";
 import { ReadXml,IStyleCollections,Element } from "./ReadXml";
 import {getXmlAttibute} from "../common/method";
 import { LuckyFileBase,LuckyFileInfo,LuckySheetBase,LuckySheetCelldataBase,LuckySheetCelldataValue,LuckySheetCellFormat } from "./LuckyBase";
@@ -18,7 +18,7 @@ export class LuckyFile extends LuckyFileBase {
     private calcChain:Element[]
     private imageList:ImageList
 
-    constructor(files:IuploadfileList, fileName:string) { 
+    constructor(files:IuploadfileList, fileName:string) {
         super();
         this.files = files;
         this.fileName = fileName;
@@ -48,7 +48,7 @@ export class LuckyFile extends LuckyFileBase {
             let formatcode = getXmlAttibute(attrList, "formatCode", "@");
             // console.log(numfmtid, formatcode);
             if(!(numfmtid in numFmtDefault)){
-                numFmtDefaultC[numfmtid] = formatcode;
+                numFmtDefaultC[numfmtid] = numFmtDefaultMap[formatcode] || formatcode;
             }
         }
 
@@ -71,20 +71,20 @@ export class LuckyFile extends LuckyFileBase {
             let rel = workbookRelList[i], attrList = rel.attributeList;
             let id = attrList["Id"], target = attrList["Target"];
             if(regex.test(target)){
-                if(target.startsWith('/xl')){
+                if(target.indexOf('/xl') === 0){
                     sheetNames[id] =   target.substr(1);
                 }else{
                     sheetNames[id] =   "xl/" + target;
                 }
             }
-           
+
         }
 
         this.sheetNameList = sheetNames;
     }
 
     /**
-    * @param sheetName WorkSheet'name 
+    * @param sheetName WorkSheet'name
     * @return sheet file name and path in zip
     */
    private getSheetFileBysheetId(sheetId:string){
@@ -131,10 +131,11 @@ export class LuckyFile extends LuckyFileBase {
         let order = 0;
         for(let key in sheets){
             let sheet = sheets[key];
-            let sheetName = sheet.attributeList.name; 
-            let sheetId = sheet.attributeList["sheetId"]; 
-            let rid = sheet.attributeList["r:id"]; 
+            let sheetName = sheet.attributeList.name;
+            let sheetId = sheet.attributeList["sheetId"];
+            let rid = sheet.attributeList["r:id"];
             let sheetFile = this.getSheetFileBysheetId(rid);
+            let hide = sheet.attributeList.state === "hidden" ? 1 : 0;
 
             let drawing = this.readXml.getElementsByTagName("worksheet/drawing", sheetFile), drawingFile, drawingRelsFile;
             if(drawing!=null && drawing.length>0){
@@ -145,22 +146,22 @@ export class LuckyFile extends LuckyFileBase {
                     drawingRelsFile = this.getDrawingRelsFile(drawingFile);
                 }
             }
-  
+
             if(sheetFile!=null){
                 let sheet = new LuckySheet(sheetName, sheetId, order, isInitialCell,
                     {
                         sheetFile:sheetFile,
-                        readXml:this.readXml, 
-                        sheetList:sheetList, 
-                        styles:this.styles, 
-                        sharedStrings:this.sharedStrings, 
-                        calcChain:this.calcChain, 
+                        readXml:this.readXml,
+                        sheetList:sheetList,
+                        styles:this.styles,
+                        sharedStrings:this.sharedStrings,
+                        calcChain:this.calcChain,
                         imageList:this.imageList,
                         drawingFile:drawingFile,
-                        drawingRelsFile:drawingRelsFile,
+                        drawingRelsFile: drawingRelsFile,
+                        hide: hide,
                     }
                 )
-
                 this.columnWidthSet = [];
                 this.rowHeightSet = [];
 
@@ -179,7 +180,7 @@ export class LuckyFile extends LuckyFileBase {
         if(index<sets.length){
             return;
         }
-        
+
         let startIndex = sets.length, endIndex = index;
         let allGap = 0;
         if(startIndex>0){
@@ -202,7 +203,7 @@ export class LuckyFile extends LuckyFileBase {
             sets.push(allGap);
         }
     }
-    
+
     private imagePositionCaculation(sheet:LuckySheet){
         let images = sheet.images, defaultColWidth = sheet.defaultColWidth, defaultRowHeight = sheet.defaultRowHeight;
         let colhidden = {};
@@ -224,7 +225,7 @@ export class LuckyFile extends LuckyFileBase {
         if(sheet.config.rowlen){
             rowlen = sheet.config.rowlen;
         }
-        
+
         for(let key in images){
             let imageObject:any = images[key];//Image, luckyImage
             let fromCol = imageObject.fromCol;
@@ -238,7 +239,7 @@ export class LuckyFile extends LuckyFileBase {
             let toRowOff = imageObject.toRowOff;
 
             let x_n =0,y_n = 0;
-            let cx_n = 0, cy_n = 0; 
+            let cx_n = 0, cy_n = 0;
 
             if(fromCol>=this.columnWidthSet.length){
                 this.extendArray(fromCol, this.columnWidthSet, defaultColWidth, colhidden, columnlen);
@@ -348,7 +349,7 @@ export class LuckyFile extends LuckyFileBase {
     getSheetsWithoutCell(){
         this.getSheetsFull(false);
     }
-    
+
     /**
     * @return LuckySheet file json
     */
@@ -498,6 +499,18 @@ export class LuckyFile extends LuckyFileBase {
 
             if(sheet.images!=null){
                 sheetout.images = sheet.images;
+            }
+          
+            if (sheet.dataVerification != null){
+              sheetout.dataVerification = sheet.dataVerification;
+            }
+          
+            if (sheet.hyperlink != null){
+                sheetout.hyperlink = sheet.hyperlink;
+            }
+          
+            if (sheet.hide != null) {
+              sheetout.hide = sheet.hide;
             }
             
             LuckyOutPutFile.sheets.push(sheetout);
